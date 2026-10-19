@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LeadIQ — Appointment Setter Lead Enrichment Tool</title>
+<style>
+  :root {
+    --navy: #0b1026;
+    --navy2: #131a3a;
+    --purple: #8b5cf6;
+    --purple2: #a78bfa;
+    --text: #e8eaf6;
+    --muted: #9aa0c3;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--navy);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 32px 16px;
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 28px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--purple), #6d28d9);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px;
+  }
+  h1 { font-size: 26px; }
+  .sub { color: var(--muted); font-size: 14px; }
+  .pill {
+    border: 1px solid var(--purple); color: var(--purple2);
+    border-radius: 999px; padding: 6px 14px; font-size: 13px; white-space: nowrap;
+  }
+  .drop {
+    border: 2px dashed #3b4370; border-radius: 16px;
+    background: var(--navy2); padding: 48px 24px; text-align: center;
+    transition: border-color .2s, background .2s;
+  }
+  .drop.over { border-color: var(--purple); background: #18204a; }
+  .drop h2 { margin: 16px 0 8px; font-size: 22px; }
+  .drop p { color: var(--muted); font-size: 14px; margin-bottom: 20px; }
+  .btn {
+    background: var(--purple); color: #fff; border: none; border-radius: 10px;
+    padding: 12px 28px; font-size: 15px; cursor: pointer; font-weight: 600;
+  }
+  .btn:hover { background: #7c3aed; }
+  .btn.ghost { background: transparent; border: 1px solid #3b4370; color: var(--text); }
+  .tiny { color: var(--muted); font-size: 12px; margin-top: 14px; }
+  .privacy { text-align: center; color: var(--muted); font-size: 13px; margin-top: 18px; }
+  #results { display: none; margin-top: 28px; }
+  .stats { display: flex; gap: 12px; margin-bottom: 16px; flex-wrap: wrap; }
+  .stat {
+    background: var(--navy2); border: 1px solid #232c5c; border-radius: 12px;
+    padding: 12px 18px; flex: 1; min-width: 140px;
+  }
+  .stat b { font-size: 22px; display: block; }
+  .stat span { color: var(--muted); font-size: 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid #232c5c; }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; }
+  .score { font-weight: 700; }
+  .score.high { color: #4ade80; }
+  .score.mid { color: #fbbf24; }
+  .score.low { color: #f87171; }
+  .kw { display: inline-block; background: #1e2547; color: var(--purple2);
+        border-radius: 6px; padding: 2px 8px; margin: 1px 2px; font-size: 11px; }
+  .actions { display: flex; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
+  footer { text-align: center; color: var(--muted); font-size: 12px; margin-top: 40px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <div class="logo">⚡</div>
+      <div>
+        <h1>LeadIQ</h1>
+        <div class="sub">Keyword Matcher</div>
+      </div>
+    </div>
+    <div class="pill">Coaches &amp; Consultants ICP</div>
+  </header>
+
+  <div class="drop" id="drop">
+    <div style="font-size:40px">📤</div>
+    <h2>Drop your lead CSV here</h2>
+    <p>Upload a CSV exported from LinkedIn, Apollo, Phantombuster, or any source</p>
+    <button class="btn" id="pick">Choose CSV File</button>
+    <input type="file" id="file" accept=".csv" hidden>
+    <div class="tiny">Supported: .csv — columns auto-detected</div>
+  </div>
+  <div class="privacy">🔒 Runs 100% in your browser — your data stays private</div>
+
+  <div id="results">
+    <div class="stats">
+      <div class="stat"><b id="stotal">0</b><span>leads scanned</span></div>
+      <div class="stat"><b id="smatch">0</b><span>ICP matches</span></div>
+      <div class="stat"><b id="savg">0</b><span>avg match score</span></div>
+    </div>
+    <table>
+      <thead>
+        <tr><th>Name</th><th>Headline</th><th>Company</th><th>Score</th><th>Matched keywords</th></tr>
+      </thead>
+      <tbody id="rows"></tbody>
+    </table>
+    <div class="actions">
+      <button class="btn" id="dl">Download enriched CSV</button>
+      <button class="btn ghost" id="reset">Start over</button>
+    </div>
+  </div>
+
+  <footer>LeadIQ · rebuilt from scratch by Satyam</footer>
+</div>
+
+<script>
+// ---- tiny CSV parser (no dependencies, stays offline) ----
+function parseCSV(text) {
+  const rows = [];
+  let row = [], val = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') {
+        if (text[i + 1] === '"') { val += '"'; i++; }
+        else q = false;
+      } else val += c;
+    } else if (c === '"') q = true;
+    else if (c === ",") { row.push(val); val = ""; }
+    else if (c === "\n" || c === "\r") {
+      if (val !== "" || row.length) { row.push(val); rows.push(row); row = []; val = ""; }
+      if (c === "\r" && text[i + 1] === "\n") i++;
+    } else val += c;
+  }
+  if (val !== "" || row.length) { row.push(val); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim() !== ""));
+}
+
+// ---- column auto-detection ----
+const NAME_HINTS = ["name", "full name", "contact", "person"];
+const HEAD_HINTS = ["headline", "title", "position", "role", "occupation"];
+const COMP_HINTS = ["company", "organization", "org", "employer", "business"];
+const LOC_HINTS  = ["location", "city", "country", "region"];
+
+function findCol(headers, hints) {
+  const h = headers.map(x => x.toLowerCase().trim());
+  for (const hint of hints) {
+    const i = h.findIndex(x => x.includes(hint));
+    if (i > -1) return i;
+  }
+  return -1;
+}
+
+// ---- ICP keyword matcher (Coaches & Consultants) ----
+const ICP = [
+  ["coach", 3], ["consultant", 3], ["consulting", 3],
+  ["founder", 2], ["co-founder", 2], ["mentor", 2], ["trainer", 2],
+  ["speaker", 2], ["author", 1], ["advisor", 2], ["strategist", 2],
+  ["ceo", 1], ["owner", 1], ["agency", 1], ["academy", 2],
+  ["transformation", 1], ["wellness", 1], ["mindset", 1], ["business", 1],
+];
+
+function scoreLead(text) {
+  const t = text.toLowerCase();
+  let score = 0;
+  const hits = [];
+  for (const [kw, w] of ICP) {
+    if (t.includes(kw)) { score += w; hits.push(kw); }
+  }
+  return { score: Math.min(score, 10), hits };
+}
+
+let enriched = [];
+let headers = [];
+
+function handleFile(f) {
+  const r = new FileReader();
+  r.onload = () => {
+    const rows = parseCSV(r.result);
+    if (rows.length < 2) { alert("No data rows found in this CSV."); return; }
+    headers = rows[0];
+    const ci = {
+      name: findCol(headers, NAME_HINTS),
+      head: findCol(headers, HEAD_HINTS),
+      comp: findCol(headers, COMP_HINTS),
+      loc:  findCol(headers, LOC_HINTS),
+    };
+    // fallback: first columns
+    if (ci.name < 0) ci.name = 0;
+    if (ci.head < 0) ci.head = Math.min(1, headers.length - 1);
+    if (ci.comp < 0) ci.comp = Math.min(2, headers.length - 1);
+
+    enriched = rows.slice(1).map(row => {
+      const text = [row[ci.name], row[ci.head], row[ci.comp]].filter(Boolean).join(" ");
+      const { score, hits } = scoreLead(text);
+      return { row, name: row[ci.name] || "—", head: row[ci.head] || "—",
+               comp: row[ci.comp] || "—", score, hits };
+    }).sort((a, b) => b.score - a.score);
+    render();
+  };
+  r.readAsText(f);
+}
+
+function render() {
+  document.querySelector(".drop").style.display = "none";
+  document.querySelector(".privacy").style.display = "none";
+  const box = document.getElementById("results");
+  box.style.display = "block";
+  const matched = enriched.filter(e => e.score >= 3);
+  document.getElementById("stotal").textContent = enriched.length;
+  document.getElementById("smatch").textContent = matched.length;
+  document.getElementById("savg").textContent =
+    (enriched.reduce((s, e) => s + e.score, 0) / Math.max(enriched.length, 1)).toFixed(1);
+
+  const tb = document.getElementById("rows");
+  tb.innerHTML = "";
+  for (const e of enriched.slice(0, 200)) {
+    const cls = e.score >= 6 ? "high" : e.score >= 3 ? "mid" : "low";
+    const tr = document.createElement("tr");
+    tr.innerHTML =
+      `<td>${esc(e.name)}</td><td>${esc(e.head)}</td><td>${esc(e.comp)}</td>` +
+      `<td class="score ${cls}">${e.score}/10</td>` +
+      `<td>${e.hits.map(k => `<span class="kw">${esc(k)}</span>`).join("") || "—"}</td>`;
+    tb.appendChild(tr);
+  }
+  box.scrollIntoView({ behavior: "smooth" });
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+document.getElementById("dl").onclick = () => {
+  const out = [headers.concat(["leadiq_score", "leadiq_keywords"])];
+  for (const e of enriched) out.push(e.row.concat([e.score, e.hits.join("; ")]));
+  const csv = out.map(r => r.map(v =>
+    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v).join(",")).join("\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+  a.download = "leadiq-enriched.csv";
+  a.click();
+};
+document.getElementById("reset").onclick = () => location.reload();
+
+const drop = document.getElementById("drop");
+const file = document.getElementById("file");
+document.getElementById("pick").onclick = () => file.click();
+file.onchange = e => e.target.files[0] && handleFile(e.target.files[0]);
+["dragover", "dragenter"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.add("over");
+}));
+["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => {
+  e.preventDefault(); drop.classList.remove("over");
+}));
+drop.addEventListener("drop", e => {
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+</script>
+</body>
+</html>
