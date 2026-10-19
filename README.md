@@ -20,7 +20,12 @@ Sales Navigator tips
 Run it
 
 open index.html in any browser
+or use the live link below
 all data lives in coaches.js
 edit that one file to add or update coaches
+
+Live
+
+https://aisatyam11.github.io/coaches-directory/
 
 Built from scratch by Satyam
